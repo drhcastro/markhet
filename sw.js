@@ -1,71 +1,80 @@
-// Define un nombre y versión para la caché de la aplicación
-const CACHE_NAME = 'inventario-moni-hector-v2'; // Incrementamos la versión para forzar la actualización
+// Define un nombre y versión para la caché de la aplicación.
+// Incrementamos la versión para forzar la actualización en los dispositivos.
+const CACHE_NAME = 'inventario-moni-hector-v4';
 
-// Lista de archivos esenciales para que la aplicación funcione sin conexión
-const urlsToCache = [
+// Lista de archivos esenciales que componen la "cáscara" de la aplicación.
+// Estos son los únicos archivos que se guardarán durante la instalación.
+const APP_SHELL_URLS = [
   './',
   './index.html',
   './manifest.json',
   './carrito1.png',
-  './carrito2.png',
-  'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-  'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
-  'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
-  'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
+  './carrito2.png'
 ];
 
-// Evento 'install': se dispara cuando el Service Worker se instala por primera vez.
+// Evento 'install': se dispara cuando el Service Worker se instala.
+// Su única misión es guardar el App Shell en la caché.
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Cache abierta');
-        // Usamos un array de promesas para manejar las peticiones de terceros
-        const cachePromises = urlsToCache.map(urlToCache => {
-          // Para las URLs de terceros, hacemos la petición en modo 'no-cors'
-          if (urlToCache.startsWith('http')) {
-            return cache.add(new Request(urlToCache, { mode: 'no-cors' }));
-          }
-          // Para los archivos locales, los añadimos normalmente
-          return cache.add(urlToCache);
-        });
-        return Promise.all(cachePromises);
+        console.log('Instalando Service Worker y cacheando App Shell');
+        return cache.addAll(APP_SHELL_URLS);
+      })
+      .catch(error => {
+        console.error('Fallo al cachear el App Shell:', error);
       })
   );
 });
 
 // Evento 'activate': se dispara cuando el nuevo Service Worker se activa.
-// Se usa para limpiar cachés antiguas.
+// Se usa para limpiar las cachés de versiones anteriores y evitar conflictos.
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
+        cacheNames
+          .filter(cacheName => cacheName !== CACHE_NAME)
+          .map(cacheName => {
             console.log('Borrando caché antigua:', cacheName);
             return caches.delete(cacheName);
-          }
-        })
+          })
       );
     })
   );
 });
 
-
-// Evento 'fetch': se dispara cada vez que la página solicita un recurso.
+// Evento 'fetch': se dispara para CADA petición que hace la página.
+// Aquí implementamos la estrategia "Network falling back to cache".
 self.addEventListener('fetch', event => {
+  // Ignoramos las peticiones que no son GET y las de la API de Firestore,
+  // ya que Firebase tiene su propio manejo de datos sin conexión.
+  if (event.request.method !== 'GET' || event.request.url.includes('firestore.googleapis.com')) {
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Si el recurso está en la caché, lo devuelve.
-        if (response) {
-          return response;
+    // 1. Intenta obtener el recurso de la red primero.
+    fetch(event.request)
+      .then(networkResponse => {
+        // Si la petición a la red es exitosa, la guardamos en caché para el futuro
+        // y la devolvemos al navegador.
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME)
+          .then(cache => {
+            cache.put(event.request, responseToCache);
+          });
+        return networkResponse;
+      })
+      .catch(async () => {
+        // 2. Si la red falla (estás sin conexión), busca el recurso en la caché.
+        console.log('Fallo de red. Buscando en caché:', event.request.url);
+        const cachedResponse = await caches.match(event.request);
+        // Si lo encuentra en caché, lo devuelve.
+        if (cachedResponse) {
+          return cachedResponse;
         }
-        // Si no, lo solicita a la red.
-        return fetch(event.request);
-      }
-    )
+        // Si no está ni en la red ni en la caché, la petición fallará.
+      })
   );
 });
