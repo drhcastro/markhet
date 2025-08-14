@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventario de Compras - Moni & Héctor</title>
+    
+    <!-- ================================================== -->
+    <!-- === PASO 1: AÑADIR ESTA LÍNEA PARA EL MANIFIESTO === -->
+    <!-- ================================================== -->
+    <link rel="manifest" href="manifest.json">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -150,14 +156,14 @@
 
         // --- CONFIGURACIÓN Y ESTADO INICIAL ---
 
-        // Configuración de Firebase (se obtiene del entorno)
         const firebaseConfig = {
-    apiKey: "AIzaSyDHddmg0OawLjgLRe0JG60grZz7hmjZjdk",
-    authDomain: "lista-supermercado-moni.firebaseapp.com",
-    projectId: "lista-supermercado-moni",
-    storageBucket: "lista-supermercado-moni.firebasestorage.app",
-    messagingSenderId: "325452730885",
-    appId: "1:325452730885:web:8ab92f84c6ead9280a026c" };
+            apiKey: "AIzaSyDHddmg0OawLjgLRe0JG60grZz7hmjZjdk",
+            authDomain: "lista-supermercado-moni.firebaseapp.com",
+            projectId: "lista-supermercado-moni",
+            storageBucket: "lista-supermercado-moni.firebasestorage.app",
+            messagingSenderId: "325452730885",
+            appId: "1:325452730885:web:8ab92f84c6ead9280a026c" 
+        };
 
         // Inicialización de Firebase
         const app = initializeApp(firebaseConfig);
@@ -166,7 +172,7 @@
 
         // Estado de la aplicación
         let userId = null;
-        let cart = []; // Formato: [{ id, name, groupId, quantity, bestCost, currentCost }]
+        let cart = [];
         
         const groups = [
             { id: 'refrigerador', name: 'Refrigerador', icon: 'fa-snowflake' },
@@ -194,10 +200,6 @@
         const cartModalContent = document.getElementById('cart-modal-content');
 
         // --- FUNCIONES PRINCIPALES ---
-
-        /**
-         * Inicializa la autenticación y renderiza la aplicación.
-         */
         async function main() {
             onAuthStateChanged(auth, (user) => {
                 if (user) {
@@ -213,9 +215,6 @@
             });
         }
 
-        /**
-         * Renderiza la cuadrícula de grupos en la página principal.
-         */
         function renderGroups() {
             groupsGrid.innerHTML = '';
             groups.forEach(group => {
@@ -230,11 +229,6 @@
             });
         }
 
-        /**
-         * Muestra el modal con los artículos de un grupo específico.
-         * @param {string} groupId - El ID del grupo.
-         * @param {string} groupName - El nombre del grupo.
-         */
         async function showItemsModal(groupId, groupName) {
             if (!userId) return;
 
@@ -267,15 +261,9 @@
             await renderItemsList(groupId);
         }
         
-        /**
-         * Renderiza la lista de artículos para un grupo en el modal.
-         * @param {string} groupId - El ID del grupo.
-         */
         async function renderItemsList(groupId) {
             const itemsListContainer = document.getElementById('items-list');
-            
             try {
-                // CORRECCIÓN: Obtener todos los artículos y filtrar en el cliente para evitar la necesidad de un índice de Firestore.
                 const itemsRef = collection(db, 'users', userId, 'items');
                 const allItemsSnapshot = await getDocs(itemsRef);
                 const itemsInGroup = [];
@@ -291,7 +279,6 @@
                 }
 
                 itemsListContainer.innerHTML = '';
-                // Ordenar alfabéticamente para una mejor visualización
                 itemsInGroup.sort((a, b) => a.name.localeCompare(b.name));
 
                 itemsInGroup.forEach(item => {
@@ -330,10 +317,6 @@
             }
         }
 
-        /**
-         * Maneja la adición de un nuevo artículo a Firestore.
-         * @param {string} groupId - El ID del grupo al que pertenece el artículo.
-         */
         async function handleAddNewItem(groupId) {
             const name = document.getElementById('new-item-name').value.trim();
             const unitType = document.getElementById('new-item-unit').value.trim();
@@ -362,12 +345,6 @@
             }
         }
         
-        /**
-         * Maneja la adición o eliminación de un artículo del carrito.
-         * @param {string} itemId - El ID del artículo.
-         * @param {string} groupId - El ID del grupo del artículo.
-         * @param {boolean} isAdding - True si se está añadiendo, false si se está quitando.
-         */
         async function handleAddToCart(itemId, groupId, isAdding) {
             let itemInCart = cart.find(i => i.id === itemId);
 
@@ -375,7 +352,6 @@
                 if (itemInCart) {
                     itemInCart.quantity++;
                 } else {
-                    // CORRECCIÓN: Usar getDoc para obtener un solo documento por su ID.
                     const itemRef = doc(db, 'users', userId, 'items', itemId);
                     const docSnap = await getDoc(itemRef);
                     if (docSnap.exists()) {
@@ -402,9 +378,6 @@
             await renderItemsList(groupId);
         }
 
-        /**
-         * Actualiza la UI del carrito (contador y modal si está abierto).
-         */
         function updateCartUI() {
             const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
             cartCount.textContent = totalItems;
@@ -415,9 +388,6 @@
             }
         }
 
-        /**
-         * Muestra el modal del carrito de compras.
-         */
         function renderCartModal() {
             cartModal.classList.add('active');
             if (cart.length === 0) {
@@ -503,9 +473,6 @@
             document.getElementById('purchase-btn').onclick = handlePurchase;
         }
         
-        /**
-         * Procesa la compra, actualizando la base de datos en Firestore.
-         */
         async function handlePurchase() {
             if (cart.length === 0) {
                 showMessage("Carrito vacío", "No hay nada que comprar.");
@@ -522,13 +489,10 @@
 
                 for (const item of cart) {
                     const itemRef = doc(db, 'users', userId, 'items', item.id);
-                    
-                    // CORRECCIÓN: Usar getDoc para obtener el estado actual del artículo.
                     const docSnap = await getDoc(itemRef);
                     if (docSnap.exists()) {
                         const currentData = docSnap.data();
                         const newAvailableUnits = (currentData.availableUnits || 0) + item.quantity;
-                        // CORRECCIÓN: Lógica mejorada para actualizar el mejor costo.
                         const newBestCost = (!currentData.bestCost || item.currentCost < currentData.bestCost) ? item.currentCost : currentData.bestCost;
 
                         batch.update(itemRef, {
@@ -560,8 +524,6 @@
             }
         }
 
-        // --- FUNCIONES AUXILIARES (MODALES) ---
-        
         function showMessage(title, text) {
             document.getElementById('message-title').textContent = title;
             document.getElementById('message-text').textContent = text;
@@ -572,7 +534,6 @@
         window.closeCartModal = () => cartModal.classList.remove('active');
         window.closeMessageModal = () => document.getElementById('message-modal').classList.remove('active');
 
-        // --- EVENT LISTENERS GLOBALES ---
         cartButton.onclick = renderCartModal;
         
         window.onkeydown = (e) => {
@@ -585,6 +546,21 @@
 
         // --- INICIO DE LA APP ---
         main();
+
+        // =========================================================
+        // === PASO 2: AÑADIR ESTE BLOQUE AL FINAL DEL SCRIPT ===
+        // =========================================================
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+              .then(registration => {
+                console.log('ServiceWorker registrado con éxito:', registration);
+              })
+              .catch(err => {
+                console.log('Fallo en el registro de ServiceWorker:', err);
+              });
+          });
+        }
 
     </script>
 </body>
