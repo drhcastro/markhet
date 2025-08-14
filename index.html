@@ -151,9 +151,13 @@
         // --- CONFIGURACIÓN Y ESTADO INICIAL ---
 
         // Configuración de Firebase (se obtiene del entorno)
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : { apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." };
+        const firebaseConfig = {
+    apiKey: "AIzaSyDHddmg0OawLjgLRe0JG60grZz7hmjZjdk",
+    authDomain: "lista-supermercado-moni.firebaseapp.com",
+    projectId: "lista-supermercado-moni",
+    storageBucket: "lista-supermercado-moni.firebasestorage.app",
+    messagingSenderId: "325452730885",
+    appId: "1:325452730885:web:8ab92f84c6ead9280a026c" };
 
         // Inicialización de Firebase
         const app = initializeApp(firebaseConfig);
