@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario de Compras - Moni & Héctor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .main-container {
+            max-width: 1200px;
+            margin: auto;
+            padding: 1rem;
+        }
+        .group-card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .group-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: scale(0.95);
+            transition: transform 0.3s;
+        }
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+        .btn {
+            @apply px-4 py-2 rounded-lg font-semibold text-white transition-colors;
+        }
+        .btn-primary {
+            @apply bg-blue-600 hover:bg-blue-700;
+        }
+        .btn-secondary {
+            @apply bg-gray-500 hover:bg-gray-600;
+        }
+        .btn-danger {
+            @apply bg-red-600 hover:bg-red-700;
+        }
+        .btn-success {
+            @apply bg-green-600 hover:bg-green-700;
+        }
+        .form-input {
+            @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500;
+        }
+        /* Custom scrollbar */
+        .modal-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        .modal-content::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .modal-content::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .modal-content::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <header class="text-center my-8">
+            <h1 class="text-4xl font-bold text-gray-800">Lista de Supermercado</h1>
+            <p class="text-lg text-gray-600 mt-2">Gestiona tu inventario de forma fácil y rápida</p>
+        </header>
+
+        <div id="groups-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
+            <!-- Las tarjetas de grupo se insertarán aquí -->
+        </div>
+
+        <div class="fixed bottom-6 right-6 z-40">
+            <button id="cart-button" class="bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-110">
+                <i class="fas fa-shopping-cart text-2xl"></i>
+                <span id="cart-count" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center">0</span>
+            </button>
+        </div>
+
+    </div>
+
+    <footer class="text-center py-6 mt-12">
+        <p class="text-gray-500 font-semibold">Inventario de compras de Moni & Héctor</p>
+        <div id="auth-info" class="text-xs text-gray-400 mt-2"></div>
+    </footer>
+
+    <!-- Modal para la lista de artículos -->
+    <div id="items-modal" class="modal-overlay">
+        <div id="items-modal-content" class="modal-content">
+            <!-- El contenido se generará dinámicamente -->
+        </div>
+    </div>
+
+    <!-- Modal para el carrito de compras -->
+    <div id="cart-modal" class="modal-overlay">
+        <div id="cart-modal-content" class="modal-content">
+            <!-- El contenido del carrito se generará dinámicamente -->
+        </div>
+    </div>
+    
+    <!-- Modal para mensajes -->
+    <div id="message-modal" class="modal-overlay">
+        <div class="modal-content text-center max-w-sm">
+            <h2 id="message-title" class="text-2xl font-bold mb-4"></h2>
+            <p id="message-text" class="text-gray-700 mb-6"></p>
+            <button onclick="closeMessageModal()" class="btn btn-primary">Entendido</button>
+        </div>
+    </div>
+
+
+    <script type="module">
+        // Importaciones de Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, getDoc, getDocs, addDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONFIGURACIÓN Y ESTADO INICIAL ---
+
+        // Configuración de Firebase (se obtiene del entorno)
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : { apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." };
+
+        // Inicialización de Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Estado de la aplicación
+        let userId = null;
+        let cart = []; // Formato: [{ id, name, groupId, quantity, bestCost, currentCost }]
+        
+        const groups = [
+            { id: 'refrigerador', name: 'Refrigerador', icon: 'fa-snowflake' },
+            { id: 'agua', name: 'Agua', icon: 'fa-tint' },
+            { id: 'alacena1', name: 'Alacena 1 (Harinas, Pastas)', icon: 'fa-bread-slice' },
+            { id: 'alacena2', name: 'Alacena 2 (Galletas, Cereales)', icon: 'fa-cookie-bite' },
+            { id: 'alacena3', name: 'Alacena 3 (Granos)', icon: 'fa-seedling' },
+            { id: 'alacena4', name: 'Alacena 4 (Enlatados, Salsas)', icon: 'fa-jar' },
+            { id: 'alacena5', name: 'Alacena 5 (Desechables)', icon: 'fa-box-open' },
+            { id: 'refrigerador_rojo', name: 'Refrigerador Rojo', icon: 'fa-wine-bottle' },
+            { id: 'limpieza', name: 'Limpieza', icon: 'fa-soap' },
+            { id: 'cuidado_personal', name: 'Cuidado Personal', icon: 'fa-pump-soap' },
+            { id: 'mantenimiento_jardin', name: 'Mantenimiento y Jardín', icon: 'fa-leaf' },
+            { id: 'articulos_cocina', name: 'Artículos Cocina', icon: 'fa-utensils' },
+            { id: 'decoracion', name: 'Decoración', icon: 'fa-palette' }
+        ];
+
+        // --- ELEMENTOS DEL DOM ---
+        const groupsGrid = document.getElementById('groups-grid');
+        const cartButton = document.getElementById('cart-button');
+        const cartCount = document.getElementById('cart-count');
+        const itemsModal = document.getElementById('items-modal');
+        const itemsModalContent = document.getElementById('items-modal-content');
+        const cartModal = document.getElementById('cart-modal');
+        const cartModalContent = document.getElementById('cart-modal-content');
+
+        // --- FUNCIONES PRINCIPALES ---
+
+        /**
+         * Inicializa la autenticación y renderiza la aplicación.
+         */
+        async function main() {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('auth-info').textContent = `ID de sesión: ${userId}`;
+                    renderGroups();
+                } else {
+                    signInAnonymously(auth).catch(error => {
+                        console.error("Error en la autenticación anónima:", error);
+                        showMessage("Error de Autenticación", "No se pudo iniciar sesión. Por favor, recarga la página.");
+                    });
+                }
+            });
+        }
+
+        /**
+         * Renderiza la cuadrícula de grupos en la página principal.
+         */
+        function renderGroups() {
+            groupsGrid.innerHTML = '';
+            groups.forEach(group => {
+                const card = document.createElement('div');
+                card.className = 'group-card bg-white rounded-lg shadow-md p-4 flex flex-col items-center justify-center text-center cursor-pointer aspect-square';
+                card.innerHTML = `
+                    <i class="fas ${group.icon} text-3xl md:text-4xl text-blue-600 mb-3"></i>
+                    <h3 class="font-semibold text-gray-700 text-sm md:text-base">${group.name}</h3>
+                `;
+                card.onclick = () => showItemsModal(group.id, group.name);
+                groupsGrid.appendChild(card);
+            });
+        }
+
+        /**
+         * Muestra el modal con los artículos de un grupo específico.
+         * @param {string} groupId - El ID del grupo.
+         * @param {string} groupName - El nombre del grupo.
+         */
+        async function showItemsModal(groupId, groupName) {
+            if (!userId) return;
+
+            itemsModalContent.innerHTML = `
+                <div class="flex justify-between items-center mb-6">
+                    <h2 data-group-id="${groupId}" class="text-2xl font-bold text-gray-800">${groupName}</h2>
+                    <button onclick="closeItemsModal()" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+                </div>
+                <div id="items-list" class="space-y-3 mb-6">
+                    <div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-blue-600"></i><p>Cargando...</p></div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h3 class="font-bold text-lg mb-3">Añadir Nuevo Artículo</h3>
+                    <form id="add-item-form" class="space-y-3">
+                        <input type="text" id="new-item-name" placeholder="Nombre del artículo" class="form-input" required>
+                        <input type="text" id="new-item-unit" placeholder="Unidad (ej. bolsa, kg, litro)" class="form-input" required>
+                        <input type="number" step="0.01" id="new-item-cost" placeholder="Costo inicial (opcional)" class="form-input">
+                        <button type="submit" class="btn btn-primary w-full">Añadir y Guardar</button>
+                    </form>
+                </div>
+            `;
+            itemsModal.classList.add('active');
+            
+            document.getElementById('add-item-form').onsubmit = async (e) => {
+                e.preventDefault();
+                await handleAddNewItem(groupId);
+                await renderItemsList(groupId);
+            };
+
+            await renderItemsList(groupId);
+        }
+        
+        /**
+         * Renderiza la lista de artículos para un grupo en el modal.
+         * @param {string} groupId - El ID del grupo.
+         */
+        async function renderItemsList(groupId) {
+            const itemsListContainer = document.getElementById('items-list');
+            
+            try {
+                // CORRECCIÓN: Obtener todos los artículos y filtrar en el cliente para evitar la necesidad de un índice de Firestore.
+                const itemsRef = collection(db, 'users', userId, 'items');
+                const allItemsSnapshot = await getDocs(itemsRef);
+                const itemsInGroup = [];
+                allItemsSnapshot.forEach(doc => {
+                    if (doc.data().groupId === groupId) {
+                        itemsInGroup.push({ id: doc.id, ...doc.data() });
+                    }
+                });
+
+                if (itemsInGroup.length === 0) {
+                    itemsListContainer.innerHTML = '<p class="text-center text-gray-500">No hay artículos en este grupo. ¡Añade el primero!</p>';
+                    return;
+                }
+
+                itemsListContainer.innerHTML = '';
+                // Ordenar alfabéticamente para una mejor visualización
+                itemsInGroup.sort((a, b) => a.name.localeCompare(b.name));
+
+                itemsInGroup.forEach(item => {
+                    const itemInCart = cart.find(cartItem => cartItem.id === item.id);
+                    const quantityInCart = itemInCart ? itemInCart.quantity : 0;
+
+                    const itemElement = document.createElement('div');
+                    itemElement.className = 'flex items-center justify-between bg-white p-3 rounded-lg shadow-sm';
+                    itemElement.innerHTML = `
+                        <div>
+                            <p class="font-semibold text-gray-800">${item.name}</p>
+                            <p class="text-sm text-gray-500">
+                                Disponible: ${item.availableUnits || 0} ${item.unitType}
+                                ${item.bestCost ? `| Mejor Costo: $${item.bestCost.toFixed(2)}` : ''}
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button data-id="${item.id}" class="remove-from-cart-btn bg-gray-200 text-gray-700 rounded-full w-8 h-8 font-bold text-xl flex items-center justify-center hover:bg-gray-300">-</button>
+                            <span class="font-bold w-8 text-center text-lg">${quantityInCart}</span>
+                            <button data-id="${item.id}" class="add-to-cart-btn bg-blue-500 text-white rounded-full w-8 h-8 font-bold text-xl flex items-center justify-center hover:bg-blue-600">+</button>
+                        </div>
+                    `;
+                    itemsListContainer.appendChild(itemElement);
+                });
+                
+                itemsListContainer.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+                    btn.onclick = () => handleAddToCart(btn.dataset.id, groupId, true);
+                });
+                itemsListContainer.querySelectorAll('.remove-from-cart-btn').forEach(btn => {
+                    btn.onclick = () => handleAddToCart(btn.dataset.id, groupId, false);
+                });
+
+            } catch (error) {
+                console.error("Error al obtener artículos:", error);
+                itemsListContainer.innerHTML = '<p class="text-center text-red-500">Error al cargar los artículos.</p>';
+            }
+        }
+
+        /**
+         * Maneja la adición de un nuevo artículo a Firestore.
+         * @param {string} groupId - El ID del grupo al que pertenece el artículo.
+         */
+        async function handleAddNewItem(groupId) {
+            const name = document.getElementById('new-item-name').value.trim();
+            const unitType = document.getElementById('new-item-unit').value.trim();
+            const cost = document.getElementById('new-item-cost').value;
+
+            if (!name || !unitType) {
+                showMessage("Campos incompletos", "Por favor, introduce el nombre y la unidad del artículo.");
+                return;
+            }
+
+            try {
+                const itemsRef = collection(db, 'users', userId, 'items');
+                await addDoc(itemsRef, {
+                    name,
+                    unitType,
+                    groupId,
+                    availableUnits: 0,
+                    bestCost: cost ? parseFloat(cost) : null,
+                    lastPurchaseDate: null,
+                    notes: ''
+                });
+                document.getElementById('add-item-form').reset();
+            } catch (error) {
+                console.error("Error al añadir nuevo artículo:", error);
+                showMessage("Error", "No se pudo guardar el nuevo artículo.");
+            }
+        }
+        
+        /**
+         * Maneja la adición o eliminación de un artículo del carrito.
+         * @param {string} itemId - El ID del artículo.
+         * @param {string} groupId - El ID del grupo del artículo.
+         * @param {boolean} isAdding - True si se está añadiendo, false si se está quitando.
+         */
+        async function handleAddToCart(itemId, groupId, isAdding) {
+            let itemInCart = cart.find(i => i.id === itemId);
+
+            if (isAdding) {
+                if (itemInCart) {
+                    itemInCart.quantity++;
+                } else {
+                    // CORRECCIÓN: Usar getDoc para obtener un solo documento por su ID.
+                    const itemRef = doc(db, 'users', userId, 'items', itemId);
+                    const docSnap = await getDoc(itemRef);
+                    if (docSnap.exists()) {
+                        const itemData = docSnap.data();
+                        cart.push({
+                            id: itemId,
+                            name: itemData.name,
+                            groupId: itemData.groupId,
+                            quantity: 1,
+                            bestCost: itemData.bestCost || 0,
+                            currentCost: itemData.bestCost || 0
+                        });
+                    }
+                }
+            } else {
+                if (itemInCart) {
+                    itemInCart.quantity--;
+                    if (itemInCart.quantity <= 0) {
+                        cart = cart.filter(i => i.id !== itemId);
+                    }
+                }
+            }
+            updateCartUI();
+            await renderItemsList(groupId);
+        }
+
+        /**
+         * Actualiza la UI del carrito (contador y modal si está abierto).
+         */
+        function updateCartUI() {
+            const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+            cartCount.textContent = totalItems;
+            cartCount.classList.toggle('hidden', totalItems === 0);
+
+            if (cartModal.classList.contains('active')) {
+                renderCartModal();
+            }
+        }
+
+        /**
+         * Muestra el modal del carrito de compras.
+         */
+        function renderCartModal() {
+            cartModal.classList.add('active');
+            if (cart.length === 0) {
+                cartModalContent.innerHTML = `
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-gray-800">Carrito de Compras</h2>
+                        <button onclick="closeCartModal()" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+                    </div>
+                    <p class="text-center text-gray-500 py-8">Tu carrito está vacío.</p>
+                `;
+                return;
+            }
+
+            let itemsHtml = cart.map(item => {
+                const costDifference = item.currentCost - item.bestCost;
+                let diffHtml = '';
+                if (item.bestCost > 0) {
+                    if (costDifference > 0) {
+                        diffHtml = `<span class="text-red-500 text-xs ml-2">(+$${costDifference.toFixed(2)})</span>`;
+                    } else if (costDifference < 0) {
+                        diffHtml = `<span class="text-green-500 text-xs ml-2">(-$${Math.abs(costDifference).toFixed(2)})</span>`;
+                    } else {
+                        diffHtml = `<span class="text-gray-500 text-xs ml-2">(igual)</span>`;
+                    }
+                }
+
+                return `
+                    <div class="flex items-center justify-between py-3 border-b">
+                        <div>
+                            <p class="font-semibold">${item.name}</p>
+                            <div class="flex items-center mt-1">
+                                <label class="text-sm mr-1">$</label>
+                                <input type="number" step="0.01" value="${item.currentCost.toFixed(2)}" 
+                                       data-id="${item.id}" class="cart-item-cost w-20 form-input p-1 text-sm">
+                                ${diffHtml}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-semibold">x ${item.quantity}</span>
+                            <button data-id="${item.id}" class="remove-item-from-cart-btn text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const totalCost = cart.reduce((sum, item) => sum + (item.currentCost * item.quantity), 0);
+
+            cartModalContent.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Carrito de Compras</h2>
+                    <button onclick="closeCartModal()" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+                </div>
+                <div class="space-y-2 mb-6">${itemsHtml}</div>
+                <div class="border-t pt-4">
+                    <div class="flex justify-between items-center text-xl font-bold">
+                        <span>Total:</span>
+                        <span id="cart-total">$${totalCost.toFixed(2)}</span>
+                    </div>
+                    <button id="purchase-btn" class="btn btn-success w-full mt-6">Adquirir y Actualizar Inventario</button>
+                </div>
+            `;
+            
+            cartModalContent.querySelectorAll('.cart-item-cost').forEach(input => {
+                input.onchange = (e) => {
+                    const itemId = e.target.dataset.id;
+                    const newCost = parseFloat(e.target.value);
+                    const itemInCart = cart.find(i => i.id === itemId);
+                    if (itemInCart) {
+                        itemInCart.currentCost = newCost;
+                    }
+                    updateCartUI();
+                };
+            });
+            
+            cartModalContent.querySelectorAll('.remove-item-from-cart-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    const itemId = e.currentTarget.dataset.id;
+                    cart = cart.filter(i => i.id !== itemId);
+                    updateCartUI();
+                };
+            });
+
+            document.getElementById('purchase-btn').onclick = handlePurchase;
+        }
+        
+        /**
+         * Procesa la compra, actualizando la base de datos en Firestore.
+         */
+        async function handlePurchase() {
+            if (cart.length === 0) {
+                showMessage("Carrito vacío", "No hay nada que comprar.");
+                return;
+            }
+
+            const purchaseBtn = document.getElementById('purchase-btn');
+            purchaseBtn.disabled = true;
+            purchaseBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+
+            try {
+                const batch = writeBatch(db);
+                const today = new Date().toISOString().split('T')[0];
+
+                for (const item of cart) {
+                    const itemRef = doc(db, 'users', userId, 'items', item.id);
+                    
+                    // CORRECCIÓN: Usar getDoc para obtener el estado actual del artículo.
+                    const docSnap = await getDoc(itemRef);
+                    if (docSnap.exists()) {
+                        const currentData = docSnap.data();
+                        const newAvailableUnits = (currentData.availableUnits || 0) + item.quantity;
+                        // CORRECCIÓN: Lógica mejorada para actualizar el mejor costo.
+                        const newBestCost = (!currentData.bestCost || item.currentCost < currentData.bestCost) ? item.currentCost : currentData.bestCost;
+
+                        batch.update(itemRef, {
+                            availableUnits: newAvailableUnits,
+                            bestCost: newBestCost,
+                            lastPurchaseDate: today
+                        });
+                    }
+                }
+
+                await batch.commit();
+
+                showMessage("¡Compra Exitosa!", "Tu inventario ha sido actualizado correctamente.");
+                cart = [];
+                closeCartModal();
+                updateCartUI();
+                
+                if (itemsModal.classList.contains('active')) {
+                    const activeGroupId = itemsModalContent.querySelector('h2').dataset.groupId;
+                    if(activeGroupId) await renderItemsList(activeGroupId);
+                }
+
+            } catch (error) {
+                console.error("Error al procesar la compra:", error);
+                showMessage("Error en la Compra", "No se pudo actualizar el inventario. Inténtalo de nuevo.");
+            } finally {
+                purchaseBtn.disabled = false;
+                purchaseBtn.innerHTML = 'Adquirir y Actualizar Inventario';
+            }
+        }
+
+        // --- FUNCIONES AUXILIARES (MODALES) ---
+        
+        function showMessage(title, text) {
+            document.getElementById('message-title').textContent = title;
+            document.getElementById('message-text').textContent = text;
+            document.getElementById('message-modal').classList.add('active');
+        }
+
+        window.closeItemsModal = () => itemsModal.classList.remove('active');
+        window.closeCartModal = () => cartModal.classList.remove('active');
+        window.closeMessageModal = () => document.getElementById('message-modal').classList.remove('active');
+
+        // --- EVENT LISTENERS GLOBALES ---
+        cartButton.onclick = renderCartModal;
+        
+        window.onkeydown = (e) => {
+            if (e.key === 'Escape') {
+                closeItemsModal();
+                closeCartModal();
+                closeMessageModal();
+            }
+        };
+
+        // --- INICIO DE LA APP ---
+        main();
+
+    </script>
+</body>
+</html>
